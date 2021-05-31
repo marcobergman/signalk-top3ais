@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<!-- saved from url=(0042)http://192.168.178.3:3000/signalk-browser/ -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>SignalK Browser</title>
+  <style>
+	* {font-family: Consolas, monospace}
+	#data tr:nth-child(odd) { background-color: #f2f2f2;}
+	#displayLabel td {vertical-align: top; font-weight: bold}
+	#displayValue td {text-align: center; vertical-align: middle; font-size: xx-large; font-weight: bold}
+	#displayUnit td {text-align: center; vertical-align: middle;}
+  </style>
+</head>
+<body style="">
+	<div id="data"></div>
+	<div id="gauge" style="display: inline-block; vertical-align:top;"></div>
+	<div id="display" style="display: inline-block; vertical-align:top;"></div>
+	<div id="log"></div>
+
+	<script>
+// Defaults:
+var myServerURL = location.protocol + "//" + location.host;
+var vessel = "*";
+var timeOut = 5; // seconds before data is marked 'stale'
+var dampingFactor = 0.005;
+var directionTrueDampened = 0;
+var speedTrueDampened = 0;
+
+var names = {}
+var sog = {}
+var cog = {}
+var lat = {}
+var lon = {}
+var range = {}
+var bearing = {}
+var timestamp = {}
+var ownShip = ""
+var ownTarget = ""
+var ownLat = 0
+var ownLon = 0
+
+//
+// Configure your signalk url:port below, like openplotter.myboat.local:3000 or 10.10.10.1:3000
+/*
+myServerURL = "http://192.168.178.3:3000";
+*/
+
+/*
+var myServerURL = "https://cloud.signalk.org:443";
+var vessel = "urn:mrn:imo:mmsi:244150473";
+var timeOut = 60; // seconds before data is marked 'stale'
+*/
+
+var updatesPerSecond = 1;  // refresh rate
+
+// end user config
+
+var displayDiv = document.getElementById('display');
+var dataDiv = document.getElementById('data');
+var logDiv = document.getElementById('log');
+
+// process http parameters
+presentation = 'both'
+parameter_pairs = window.location.search.slice(1).split("&")
+parameter_pairs.forEach(function (item) {
+	if (item.split("=")[0] == "presentation")
+		presentation = item.split("=")[1]
+})
+
+
+function printSignalkTable(signalkData) {
+	// print the contents of a dictionary in the form of an HTML table
+	var result = "<table border=0><tr><td><b>Name<td width=100><b>RNG<td width=50><b>BRG<td width=100><b>SOG/COG<td width=50><b align='right'>Age</tr>";
+
+	smallest_key = 0
+	pointer = ""
+	for (i = 0; i < 3; i++) {
+		marker = 1000
+		for (key in names) {
+			if (range[key] < marker && range[key] > smallest_key && sog[key] > 0.5) {
+				marker = range[key]
+				pointer = key
+			}
+		}
+		sogv = sog[pointer] * 3600 / 1852 // sog Value
+		precision = (sogv >= 10 ? 0 : 1);
+		sogv = sogv.toFixed(precision);
+
+		cogv = Math.round (cog[pointer] / Math.PI * 180, 0);
+		
+		rangev = (1852*range[pointer]).toFixed(0)
+		
+		bearingv = Math.round (bearing[pointer], 0)
+		
+		elapsedv = Math.round((Date.now() - timestamp[pointer])/1000 + 0.5, 0)
+
+		result += "<tr>";
+		result += "<td><b><a title='" + pointer + "'>" + names[pointer] + "</a></b>&nbsp;</td>";
+		result += "<td>" + rangev + "m</td>";
+		result += "<td>" + bearingv + "</td>";
+		result += "<td>" + sogv + "/" + cogv + "</td>";
+		result += "<td>" + elapsedv + "s</td>";
+		result += "</tr>";
+		smallest_key = marker
+	}
+	result += "</table>";
+	dataDiv.innerHTML = result;
+}
+
+
+
+function httpGetAsync(theUrl, callback) {
+	// get a file through HTTP
+	var xmlHttp = new XMLHttpRequest();
+	xmlHttp.onreadystatechange = function() {
+		if (xmlHttp.readyState == 4 && xmlHttp.status == 200)
+			callback(xmlHttp.responseText);
+	}
+	xmlHttp.open("GET", theUrl, true); // true for asynchronous
+	xmlHttp.send(null);
+}
+
+
+// get the id of the own ship
+httpGetAsync(myServerURL + "/signalk/v1/api/vessels/self/mmsi/", onSchema);
+
+function onSchema(responseText) {
+	// respond to the reception of a schema file
+	schema = JSON.parse(responseText);
+	ownTarget = "vessels.urn:mrn:imo:mmsi:" + schema.replace('"', '')
+}
+
+
+// set up the stream of signalk deltas
+var wsURL = myServerURL.replace("http", "ws") + "/signalk/v1/stream?subscribe=none"
+var ws = new WebSocket(wsURL);
+var subscriptionMessage = JSON.stringify({"context": "vessels.*", "subscribe": [ {"path": "name"}, {"path": "navigation.position"}, {"path": "navigation.speedOverGround"}, {"path": "navigation.courseOverGroundTrue"}]});
+ws.onopen = function(event) {ws.send(subscriptionMessage)}
+ws.onclose = function() {
+  console.log("ws close");
+}
+
+var signalkData = {};  // holds the signalk data
+var lastUpdate = Date.now();
+
+ws.onmessage = function(event) {
+	// Process an incoming signalk update message
+	json = JSON.parse(event.data);
+	//logDiv.innerHTML = logDiv.innerHTML + JSON.stringify(json, null, 2);
+
+	for (var key in json) {
+		//logDiv.innerHTML = JSON.stringify(json[key][0], null, 2);
+	    if (key == "context") {
+			target = json[key]
+		}
+		if (key == "updates" ) {
+			ts = Date.parse(json[key][0]['timestamp']);
+			timestamp[target] = ts
+			// loop through all updated paths and store them in the various dicts
+
+			values = json[key][0]['values'];
+			for (tuple in values) {
+				path = values[tuple]['path'];
+				value = values[tuple]['value'];
+
+				if (path == "") { 
+					names[target] = value["name"] 
+				}
+				
+				if (path == "navigation.courseOverGroundTrue") { 
+					cog[target] = value 
+				}
+				
+				if (path == "navigation.speedOverGround") { 
+					sog[target] = value 
+				} 
+				
+				if (path == "navigation.position") { 
+					lat[target] = value["latitude"]
+					lon[target] = value["longitude"]
+					if (target == ownTarget) {
+						ownLat = value["latitude"]
+						ownLon = value["longitude"]
+					} else {
+						range[target] = 60 * Math.sqrt (Math.pow(value["latitude"] - ownLat, 2) + Math.pow(Math.cos (ownLat / 180 * Math.PI) * (value["longitude"] - ownLon), 2)) 
+						brg = Math.atan (Math.cos (ownLat / 180 * Math.PI) * (value["longitude"] - ownLon) / (value["latitude"] - ownLat)) * 180 / Math.PI 
+						if (value["latitude"] - ownLat < 0) {
+							brg += 180
+						}
+						bearing[target] = (brg + 360) % 360
+					}
+				} 
+			}
+
+			// present the updated dictionary to the screen at the specified refresh rate
+			elapsed = Date.now() - lastUpdate;
+			printSignalkTable(signalkData);
+			if (elapsed > 1000/updatesPerSecond) {
+				lastUpdate = Date.now();
+			}
+		}
+	}
+}
+
+	</script>
+
+
+</body></html>
+

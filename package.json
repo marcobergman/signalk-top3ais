@@ -1,0 +1,28 @@
+{
+  "name": "signalk-top3ais",
+  "version": "1.0.0",
+  "description": "Shows top 3 closest, moving AIS targets",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": {
+    "name": "Marco Bergman",
+    "email": "marcobergman@gmail.com"
+  },
+  "license": "ISC",
+  "keywords": [
+    "signalk-node-server-plugin",
+    "signalk-webapp",
+    "signalk-category-web-instruments"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marcobergman/signalk-top3ais.git"
+  },
+  "bugs": {
+    "url": "https://github.com/marcobergman/signalk-top3ais/issues"
+  },
+  "homepage": "https://github.com/marcobergman/signalk-top3ais#readme",
+  "dependencies": {}
+}
