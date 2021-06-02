@@ -48,15 +48,18 @@ var lon = {}
 var range = {}
 var bearing = {}
 var timestamp = {}
+var shiptype = {}
 var ownShip = ""
 var ownTarget = ""
 var ownLat = 0
 var ownLon = 0
+var ownHeading = 0
+var canvases = []
 
 //
 // Configure your signalk url:port below, like openplotter.myboat.local:3000 or 10.10.10.1:3000
-/*
 myServerURL = "http://192.168.178.3:3000";
+/*
 */
 
 /*
@@ -82,43 +85,75 @@ parameter_pairs.forEach(function (item) {
 })
 
 
+function drawArrow(ctx, pos, length, fillStyle) {
+	var width = 3;
+	ctx.translate(length, length);
+	ctx.fillStyle = fillStyle;
+	ctx.lineWidth = 1
+	ctx.lineCap = "round";
+	ctx.rotate(pos/180*Math.PI);
+	ctx.beginPath();
+	ctx.moveTo(-width, length);
+	ctx.lineTo(width, length);
+	ctx.lineTo(0, -length);
+	ctx.lineTo(-width, length);
+	ctx.fill();
+	ctx.rotate(-pos/180*Math.PI);
+}
+
 function printSignalkTable(signalkData) {
 	// print the contents of a dictionary in the form of an HTML table
-	var result = "<table border=0><tr><td><b>Name<td width=100><b>RNG<td width=50><b>BRG<td width=100><b>SOG/COG<td width=50><b align='right'>Age</tr>";
+	var result = "<table border=0><tr><td><b>Name<td width=50><b>RNG<td><td width=50><b>BRG<td width=100><b>SOG/COG<td width=50><b align='right'>Age</tr>";
 
 	smallest_key = 0
 	pointer = ""
 	for (i = 0; i < 3; i++) {
 		marker = 1000
+		found = false
 		for (key in names) {
-			if (range[key] < marker && range[key] > smallest_key && sog[key] > 0.5) {
+			if (range[key] < marker && range[key] > smallest_key && sog[key] > 0.5 && (Date.now() - timestamp[key])/1000 < 1000) {
 				marker = range[key]
 				pointer = key
+				found = true
 			}
 		}
-		sogv = sog[pointer] * 3600 / 1852 // sog Value
-		precision = (sogv >= 10 ? 0 : 1);
-		sogv = sogv.toFixed(precision);
+		if (found) {
+			sogv = sog[pointer] * 3600 / 1852 // sog Value
+			precision = (sogv >= 10 ? 0 : 1);
+			sogv = sogv.toFixed(precision);
 
-		cogv = Math.round (cog[pointer] / Math.PI * 180, 0);
-		
-		rangev = (1852*range[pointer]).toFixed(0)
-		
-		bearingv = Math.round (bearing[pointer], 0)
-		
-		elapsedv = Math.round((Date.now() - timestamp[pointer])/1000 + 0.5, 0)
+			cogv = Math.round (cog[pointer] / Math.PI * 180, 0);
+			
+			rangev = (1852*range[pointer]).toFixed(0)
+			
+			bearingv = Math.round (bearing[pointer], 0)
 
-		result += "<tr>";
-		result += "<td><b><a title='" + pointer + "'>" + names[pointer] + "</a></b>&nbsp;</td>";
-		result += "<td>" + rangev + "m</td>";
-		result += "<td>" + bearingv + "</td>";
-		result += "<td>" + sogv + "/" + cogv + "</td>";
-		result += "<td>" + elapsedv + "s</td>";
-		result += "</tr>";
+			relativev = Math.round (bearing[pointer] + ownHeading * 180 / Math.PI, 0)
+
+			relativev = (relativev + 180) % 360 - 180
+			
+			elapsedv = Math.round((Date.now() - timestamp[pointer])/1000 + 0.5, 0)
+
+			result += "<tr>";
+			result += "<td><b><a title='" + pointer + "'>" + names[pointer] + "</a></b> (" + shiptype[pointer] + ")&nbsp;</td>";
+			result += "<td>" + rangev + "m</td>";
+			result += "<td><canvas id='" + pointer + "' width='20' height='20'>&nbsp;</td>";
+			result += "<td>" + bearingv + "</td>";
+			result += "<td>" + sogv + "/" + cogv + "</td>";
+			result += "<td>" + elapsedv + "s</td>";
+			result += "</tr>";
+			canvases[i] = {pointer, relativev}
+		} else {
+			canvases[i] = {}
+		}
 		smallest_key = marker
 	}
 	result += "</table>";
 	dataDiv.innerHTML = result;
+        for (i = 0; i < 3; i++) {
+		try {drawArrow(document.getElementById(canvases[i]['pointer']).getContext("2d"), canvases[i]['relativev'], 10, "#C87800");}
+		catch {}
+	}
 }
 
 
@@ -148,8 +183,18 @@ function onSchema(responseText) {
 // set up the stream of signalk deltas
 var wsURL = myServerURL.replace("http", "ws") + "/signalk/v1/stream?subscribe=none"
 var ws = new WebSocket(wsURL);
-var subscriptionMessage = JSON.stringify({"context": "vessels.*", "subscribe": [ {"path": "name"}, {"path": "navigation.position"}, {"path": "navigation.speedOverGround"}, {"path": "navigation.courseOverGroundTrue"}]});
+
+// first subscribe for all vessels
+var subscriptionMessage = JSON.stringify({"context": "vessels.*", "subscribe": [ 
+	{"path": "name"}, 
+	{"path": "navigation.position"}, 
+	{"path": "navigation.speedOverGround"}, 
+	{"path": "navigation.courseOverGroundTrue"},
+	{"path": "design.aisShipType"},
+	{"path": "navigation.headingTrue"}, 
+]});
 ws.onopen = function(event) {ws.send(subscriptionMessage)}
+
 ws.onclose = function() {
   console.log("ws close");
 }
@@ -164,7 +209,7 @@ ws.onmessage = function(event) {
 
 	for (var key in json) {
 		//logDiv.innerHTML = JSON.stringify(json[key][0], null, 2);
-	    if (key == "context") {
+		if (key == "context") {
 			target = json[key]
 		}
 		if (key == "updates" ) {
@@ -173,6 +218,7 @@ ws.onmessage = function(event) {
 			// loop through all updated paths and store them in the various dicts
 
 			values = json[key][0]['values'];
+
 			for (tuple in values) {
 				path = values[tuple]['path'];
 				value = values[tuple]['value'];
@@ -185,9 +231,18 @@ ws.onmessage = function(event) {
 					cog[target] = value 
 				}
 				
+				if (path == "design.aisShipType") { 
+					shiptype[target] = value["name"] 
+				} 
+
 				if (path == "navigation.speedOverGround") { 
 					sog[target] = value 
 				} 
+
+				if (path == "navigation.headingTrue" && target == ownTarget) { 
+					ownHeading = value
+				} 
+
 				
 				if (path == "navigation.position") { 
 					lat[target] = value["latitude"]
@@ -196,8 +251,10 @@ ws.onmessage = function(event) {
 						ownLat = value["latitude"]
 						ownLon = value["longitude"]
 					} else {
-						range[target] = 60 * Math.sqrt (Math.pow(value["latitude"] - ownLat, 2) + Math.pow(Math.cos (ownLat / 180 * Math.PI) * (value["longitude"] - ownLon), 2)) 
-						brg = Math.atan (Math.cos (ownLat / 180 * Math.PI) * (value["longitude"] - ownLon) / (value["latitude"] - ownLat)) * 180 / Math.PI 
+						range[target] = 60 * Math.sqrt (Math.pow(value["latitude"] - ownLat, 2) 
+							+ Math.pow(Math.cos (ownLat / 180 * Math.PI) * (value["longitude"] - ownLon), 2)) 
+						brg = Math.atan (Math.cos (ownLat / 180 * Math.PI) * (value["longitude"] - ownLon) 
+							/ (value["latitude"] - ownLat)) * 180 / Math.PI 
 						if (value["latitude"] - ownLat < 0) {
 							brg += 180
 						}
@@ -208,8 +265,8 @@ ws.onmessage = function(event) {
 
 			// present the updated dictionary to the screen at the specified refresh rate
 			elapsed = Date.now() - lastUpdate;
-			printSignalkTable(signalkData);
 			if (elapsed > 1000/updatesPerSecond) {
+				printSignalkTable(signalkData);
 				lastUpdate = Date.now();
 			}
 		}
