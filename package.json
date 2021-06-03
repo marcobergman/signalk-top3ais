@@ -1,6 +1,6 @@
 {
   "name": "signalk-top3ais",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Shows top 3 closest, moving AIS targets",
   "main": "index.js",
   "scripts": {

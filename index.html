@@ -235,7 +235,6 @@ ws.onmessage = function(event) {
 					shiptype[target] = value["name"]
 						.replace(" (no additional information)", "")
 						.replace("Engaged in dredging or underwater operations", "Dredging")
-					console.log(value['id'], shiptype[target])
 				} 
 
 				if (path == "navigation.speedOverGround") { 
