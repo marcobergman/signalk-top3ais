@@ -58,8 +58,8 @@ var canvases = []
 
 //
 // Configure your signalk url:port below, like openplotter.myboat.local:3000 or 10.10.10.1:3000
-myServerURL = "http://192.168.178.3:3000";
 /*
+myServerURL = "http://192.168.178.3:3000";
 */
 
 /*
@@ -232,7 +232,10 @@ ws.onmessage = function(event) {
 				}
 				
 				if (path == "design.aisShipType") { 
-					shiptype[target] = value["name"] 
+					shiptype[target] = value["name"]
+						.replace(" (no additional information)", "")
+						.replace("Engaged in dredging or underwater operations", "Dredging")
+					console.log(value['id'], shiptype[target])
 				} 
 
 				if (path == "navigation.speedOverGround") { 
