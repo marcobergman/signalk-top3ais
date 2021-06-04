@@ -12,9 +12,7 @@
   },
   "license": "ISC",
   "keywords": [
-    "signalk-node-server-plugin",
-    "signalk-webapp",
-    "signalk-category-web-instruments"
+    "signalk-webapp"
   ],
   "repository": {
     "type": "git",
