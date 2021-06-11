@@ -58,8 +58,8 @@ var canvases = []
 
 //
 // Configure your signalk url:port below, like openplotter.myboat.local:3000 or 10.10.10.1:3000
-/*
 myServerURL = "http://192.168.178.3:3000";
+/*
 */
 
 /*
@@ -111,7 +111,7 @@ function printSignalkTable(signalkData) {
 		marker = 1000
 		found = false
 		for (key in names) {
-			if (range[key] < marker && range[key] > smallest_key && sog[key] > 0.5 && (Date.now() - timestamp[key])/1000 < 1000) {
+			if (range[key] < marker && range[key] > smallest_key && sog[key] > 0.5 && (Date.now() - timestamp[key])/1000 < 180) {
 				marker = range[key]
 				pointer = key
 				found = true
