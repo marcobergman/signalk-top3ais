@@ -104,14 +104,14 @@ function drawArrow(ctx, pos, length, fillStyle) {
 function printSignalkTable(signalkData) {
 	// print the contents of a dictionary in the form of an HTML table
 	var result = "<table border=0><tr><td><b>Name<td width=50><b>RNG<td><td width=50><b>BRG<td width=100><b>SOG/COG<td width=50><b align='right'>Age</tr>";
-
 	smallest_key = 0
 	pointer = ""
 	for (i = 0; i < 3; i++) {
 		marker = 1000
 		found = false
 		for (key in names) {
-			if (range[key] < marker && range[key] > smallest_key && sog[key] > 0.5 && (Date.now() - timestamp[key])/1000 < 1000) {
+			//console.log(key)
+			if (range[key] < marker && range[key] > smallest_key && sog[key] > 0.5 && (Date.now() - timestamp[key])/1000 < 180) {
 				marker = range[key]
 				pointer = key
 				found = true
@@ -128,14 +128,15 @@ function printSignalkTable(signalkData) {
 			
 			bearingv = Math.round (bearing[pointer], 0)
 
-			relativev = Math.round (bearing[pointer] + ownHeading * 180 / Math.PI, 0)
+			relativev = Math.round (bearing[pointer] - ownHeading * 180 / Math.PI, 0)
 
 			relativev = (relativev + 180) % 360 - 180
 			
 			elapsedv = Math.round((Date.now() - timestamp[pointer])/1000 + 0.5, 0)
 
+            name = (names[pointer] !== undefined, names[pointer], pointer.split(":")[4])
 			result += "<tr>";
-			result += "<td><b><a title='" + pointer + "'>" + names[pointer] + "</a></b> (" + shiptype[pointer] + ")&nbsp;</td>";
+			result += "<td><b><a title='" + pointer + "'>" + name + "</a></b> (" + shiptype[pointer] + ")&nbsp;</td>";
 			result += "<td>" + rangev + "m</td>";
 			result += "<td><canvas id='" + pointer + "' width='20' height='20'>&nbsp;</td>";
 			result += "<td>" + bearingv + "</td>";
@@ -171,12 +172,12 @@ function httpGetAsync(theUrl, callback) {
 
 
 // get the id of the own ship
-httpGetAsync(myServerURL + "/signalk/v1/api/vessels/self/mmsi/", onSchema);
+httpGetAsync(myServerURL + "/signalk/v1/api/vessels/self/uuid", onSchema);
 
 function onSchema(responseText) {
 	// respond to the reception of a schema file
-	schema = JSON.parse(responseText);
-	ownTarget = "vessels.urn:mrn:imo:mmsi:" + schema.replace('"', '')
+	uuid = JSON.parse(responseText);
+	ownTarget = "vessels." + uuid
 }
 
 
@@ -212,6 +213,7 @@ ws.onmessage = function(event) {
 		if (key == "context") {
 			target = json[key]
 		}
+		//console.log(target)
 		if (key == "updates" ) {
 			ts = Date.parse(json[key][0]['timestamp']);
 			timestamp[target] = ts
@@ -222,6 +224,7 @@ ws.onmessage = function(event) {
 			for (tuple in values) {
 				path = values[tuple]['path'];
 				value = values[tuple]['value'];
+				//console.log(path, value)
 
 				if (path == "") { 
 					names[target] = value["name"] 
@@ -247,6 +250,7 @@ ws.onmessage = function(event) {
 
 				
 				if (path == "navigation.position") { 
+					names[target] = value["name"] 
 					lat[target] = value["latitude"]
 					lon[target] = value["longitude"]
 					if (target == ownTarget) {
