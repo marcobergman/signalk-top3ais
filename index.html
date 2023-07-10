@@ -49,6 +49,7 @@ var range = {}
 var bearing = {}
 var timestamp = {}
 var shiptype = {}
+var callsign = {}
 var ownShip = ""
 var ownTarget = ""
 var ownLat = 0
@@ -110,7 +111,7 @@ function printSignalkTable(signalkData) {
 		marker = 1000
 		found = false
 		for (key in names) {
-			//console.log(key)
+			//console.log(names)
 			if (range[key] < marker && range[key] > smallest_key && sog[key] > 0.5 && (Date.now() - timestamp[key])/1000 < 180) {
 				marker = range[key]
 				pointer = key
@@ -133,10 +134,12 @@ function printSignalkTable(signalkData) {
 			relativev = (relativev + 180) % 360 - 180
 			
 			elapsedv = Math.round((Date.now() - timestamp[pointer])/1000 + 0.5, 0)
-
-            name = (names[pointer] !== undefined, names[pointer], pointer.split(":")[4])
+			
+			callsignv = callsign [pointer]
+			//console.log(pointer, names[pointer])
+            name = (names[pointer] !== undefined? names[pointer]: pointer.split(":")[4])
 			result += "<tr>";
-			result += "<td><b><a title='" + pointer + "'>" + name + "</a></b> (" + shiptype[pointer] + ")&nbsp;</td>";
+			result += "<td><b><a title='" + pointer + "'>" + name + "</a></b> " + " (" + shiptype[pointer] + ") " + callsignv +"&nbsp;</td>";
 			result += "<td>" + rangev + "m</td>";
 			result += "<td><canvas id='" + pointer + "' width='20' height='20'>&nbsp;</td>";
 			result += "<td>" + bearingv + "</td>";
@@ -172,17 +175,17 @@ function httpGetAsync(theUrl, callback) {
 
 
 // get the id of the own ship
-httpGetAsync(myServerURL + "/signalk/v1/api/vessels/self/uuid", onSchema);
+httpGetAsync(myServerURL + "/signalk/v1/api/vessels/self/mmsi", onSchema);
 
 function onSchema(responseText) {
 	// respond to the reception of a schema file
-	uuid = JSON.parse(responseText);
-	ownTarget = "vessels." + uuid
+	mmsi = JSON.parse(responseText);
+	ownTarget = "vessels.urn:mrn:imo:mmsi:" + mmsi
 }
 
 
 // set up the stream of signalk deltas
-var wsURL = myServerURL.replace("http", "ws") + "/signalk/v1/stream?subscribe=none"
+var wsURL = myServerURL.replace("http", "ws") + "/signalk/v1/stream?subscribe=all"
 var ws = new WebSocket(wsURL);
 
 // first subscribe for all vessels
@@ -191,8 +194,9 @@ var subscriptionMessage = JSON.stringify({"context": "vessels.*", "subscribe": [
 	{"path": "navigation.position"}, 
 	{"path": "navigation.speedOverGround"}, 
 	{"path": "navigation.courseOverGroundTrue"},
-	{"path": "design.aisShipType"},
 	{"path": "navigation.headingTrue"}, 
+	{"path": "design.aisShipType"}, 
+	{"path": "communication"}, 
 ]});
 ws.onopen = function(event) {ws.send(subscriptionMessage)}
 
@@ -226,8 +230,12 @@ ws.onmessage = function(event) {
 				value = values[tuple]['value'];
 				//console.log(path, value)
 
-				if (path == "") { 
+				if (path == "" && value["name"] !== undefined ) { 
 					names[target] = value["name"] 
+				}
+				
+				if (path == "" && value["communication"] !== undefined) { 
+					callsign[target] = value["communication"]["callsignVhf"] 
 				}
 				
 				if (path == "navigation.courseOverGroundTrue") { 
@@ -247,10 +255,8 @@ ws.onmessage = function(event) {
 				if (path == "navigation.headingTrue" && target == ownTarget) { 
 					ownHeading = value
 				} 
-
 				
 				if (path == "navigation.position") { 
-					names[target] = value["name"] 
 					lat[target] = value["latitude"]
 					lon[target] = value["longitude"]
 					if (target == ownTarget) {
