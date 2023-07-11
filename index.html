@@ -107,17 +107,16 @@ function printSignalkTable(signalkData) {
 	var result = "<table border=0><tr><td><b>Name<td width=50><b>RNG<td><td width=50><b>BRG<td width=100><b>SOG/COG<td width=50><b align='right'>Age</tr>";
 	smallest_key = 0
 	pointer = ""
-	//console.log(names)
-	logDiv.innerHTML = ownTarget
+
 	for (i = 0; i < 3; i++) {
 		marker = 1000
 		found = false
 		for (key in names) {
 			//if (i == 0) logDiv.innerHTML = logDiv.innerHTML + "<br>" + key + 
-			//	", name: " + name[key] + 
+			//	", name: " + names[key] + 
 			//	", range: " + range[key] + 
 			//	", cog: " + cog[key] + 
-			//	", bearing: " + bearing[key]
+			//	", callsign: " + callsign[key]
 			if (range[key] < marker && range[key] > smallest_key && sog[key] > 0.5 && (Date.now() - timestamp[key])/1000 < 180) {
 				marker = range[key]
 				pointer = key
@@ -196,7 +195,7 @@ var ws = new WebSocket(wsURL);
 
 // first subscribe for all vessels
 var subscriptionMessage = JSON.stringify({"context": "vessels.*", "subscribe": [ 
-	{"path": "name"}, 
+	{"path": "name"}, //however, name does not receive updates
 	{"path": "navigation.position"}, 
 	{"path": "navigation.speedOverGround"}, 
 	{"path": "navigation.courseOverGroundTrue"},
@@ -213,22 +212,34 @@ ws.onclose = function() {
 var signalkData = {};  // holds the signalk data
 var lastUpdate = Date.now();
 
+function onResponse(responseText) {
+	// respond to the reception of a schema file
+	response = JSON.parse(responseText)
+	console.log("Response: ", response["mmsi"], response["name"])
+	names["vessels.urn:mrn:imo:mmsi:" + response["mmsi"]] =  response["name"]
+	try {callsign["vessels.urn:mrn:imo:mmsi:" + response["mmsi"]] =  response["communication"]["callsignVhf"]}
+	catch {}
+	
+}
+
+
 ws.onmessage = function(event) {
 	// Process an incoming signalk update message
 	json = JSON.parse(event.data);
-	logDiv.innerHTML = logDiv.innerHTML + "<br><br>" + event.data
-	//logDiv.innerHTML = logDiv.innerHTML + "<br><br>" + JSON.stringify(json, null, 2)
 	//logDiv.innerHTML = logDiv.innerHTML + JSON.stringify(json, null, 2);
+	var target = "";
 
 	for (var key in json) {
-		//logDiv.innerHTML = key + " " + JSON.stringify(json[key], null, 2);
-		//logDiv.innerHTML = logDiv.innerHTML + "<br><br>" + key
 		if (key == "context") {
 			target = json[key]
-			//logDiv.innerHTML = logDiv.innerHTML + "<br><br>target: " + json[key]
 		}
-		//logDiv.innerHTML = logDiv.innerHTML + "<br>" + target
-		//console.log(target)
+		
+		if (target !== "" && names[target] === undefined) {
+			console.log (target, 'name undefined, value requested')
+			httpGetAsync(myServerURL + "/signalk/v1/api/" + target.replace(".", "/"), onResponse);
+			names[target] = 'requested'
+		}
+		
 		if (key == "updates" ) {
 			ts = Date.parse(json[key][0]['timestamp']);
 			timestamp[target] = ts
@@ -268,8 +279,6 @@ ws.onmessage = function(event) {
 				} 
 				
 				if (path == "navigation.position") { 
-					//logDiv.innerHTML = logDiv.innerHTML  + "<br>" + JSON.stringify(value, null, 2) + target;
-					names[target] = value["mmsi"]
 					lat[target] = value["latitude"]
 					lon[target] = value["longitude"]
 					if (target == ownTarget) {
