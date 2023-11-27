@@ -130,7 +130,7 @@ function printSignalkTable(signalkData) {
 
 			cogv = Math.round (cog[pointer] / Math.PI * 180, 0);
 			
-			rangev = (1852*range[pointer]).toFixed(0)
+			rangev = (range[pointer]).toFixed(1)
 			
 			bearingv = Math.round (bearing[pointer], 0)
 
@@ -145,7 +145,7 @@ function printSignalkTable(signalkData) {
             name = (names[pointer] !== undefined? names[pointer]: pointer.split(":")[4])
 			result += "<tr>";
 			result += "<td><b><a title='" + pointer + "'>" + name + "</a></b> " + " (" + shiptype[pointer] + ") " + callsignv +"&nbsp;</td>";
-			result += "<td>" + rangev + "m</td>";
+			result += "<td>" + rangev + "NM</td>";
 			result += "<td><canvas id='" + pointer + "' width='20' height='20'>&nbsp;</td>";
 			result += "<td>" + bearingv + "</td>";
 			result += "<td>" + sogv + "/" + cogv + "</td>";
